@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FaceAttend — Smart Attendance System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav>
+  <div class="logo">
+    <div class="logo-mark">🎓</div>
+    <div class="logo-text">Face<span>Attend</span></div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('dashboard',this)">Dashboard</button>
+    <button class="nav-tab" onclick="showPage('recognition',this)">Live Scan</button>
+    <button class="nav-tab" onclick="showPage('people',this)">People</button>
+    <button class="nav-tab" onclick="showPage('schedule',this)">Schedule</button>
+    <button class="nav-tab" onclick="showPage('enroll',this)">Enroll</button>
+    <button class="nav-tab" onclick="showPage('records',this)">Records</button>
+  </div>
+
+  <div class="nav-right">
+    <div class="api-badge offline" id="api-badge"><span class="api-dot"></span>API Offline</div>
+    <div class="clock" id="sys-time">--:--:--</div>
+  </div>
+</nav>
+
+<!-- ===== DASHBOARD ===== -->
+<div class="page active" id="page-dashboard">
+  <div class="page-header">
+    <div class="page-eyebrow">Overview</div>
+    <h1 class="page-title">Welcome Back 👋</h1>
+    <p class="page-sub" id="dash-date">Loading date...</p>
+  </div>
+
+  <div class="schedule-status-bar" id="schedule-status-bar">
+    <div>
+      <div class="ssb-label">Current Class</div>
+      <div class="ssb-value" id="ssb-subject">Loading schedule…</div>
+      <div style="font-size:.85rem;opacity:.72;margin-top:2px;" id="ssb-time"></div>
+    </div>
+    <div class="ssb-badge" id="ssb-badge">—</div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card s1">
+      <div class="stat-accent"></div>
+      <div class="stat-icon">👥</div>
+      <div class="stat-label">Total Enrolled</div>
+      <div class="stat-value" id="stat-enrolled">—</div>
+      <div class="stat-sub">registered faces</div>
+    </div>
+    <div class="stat-card s2">
+      <div class="stat-accent"></div>
+      <div class="stat-icon">✓</div>
+      <div class="stat-label">Present Today</div>
+      <div class="stat-value" id="stat-present">—</div>
+      <div class="stat-sub" id="stat-pct">— rate</div>
+    </div>
+    <div class="stat-card s3">
+      <div class="stat-accent"></div>
+      <div class="stat-icon">⏰</div>
+      <div class="stat-label">Late Arrivals</div>
+      <div class="stat-value" id="stat-late">—</div>
+      <div class="stat-sub">after grace period</div>
+    </div>
+    <div class="stat-card s4">
+      <div class="stat-accent"></div>
+      <div class="stat-icon">✗</div>
+      <div class="stat-label">Absent</div>
+      <div class="stat-value" id="stat-absent">—</div>
+      <div class="stat-sub">not yet scanned</div>
+    </div>
+  </div>
+
+  <div class="dash-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Recent Activity</span>
+        <span class="chip" id="activity-count">0 today</span>
+      </div>
+      <div class="panel-body">
+        <div id="activity-feed"><div class="empty-msg">Loading...</div></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1.2rem;">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">System Info</span></div>
+        <div class="panel-body">
+          <div class="sysinfo-row"><span class="sysinfo-key">Model</span>    <span class="sysinfo-val purple">VGG-Face</span></div>
+          <div class="sysinfo-row"><span class="sysinfo-key">Threshold</span><span class="sysinfo-val">0.60</span></div>
+          <div class="sysinfo-row"><span class="sysinfo-key">Backend</span>  <span class="sysinfo-val teal">Flask + DeepFace</span></div>
+          <div class="sysinfo-row"><span class="sysinfo-key">Database</span> <span class="sysinfo-val">SQLite</span></div>
+          <div class="sysinfo-row"><span class="sysinfo-key">API</span>      <span class="sysinfo-val red" id="sys-api-status">Checking…</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Enrolled People</span></div>
+        <div class="panel-body"><div id="enrolled-mini"><div class="empty-msg">Loading...</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SCAN ===== -->
+<div class="page" id="page-recognition">
+  <div class="page-header">
+    <div class="page-eyebrow">Face Recognition</div>
+    <h1 class="page-title">Live <span class="normal">Attendance Scan</span></h1>
+    <p class="page-sub">Point camera at a face — the system determines Present or Late based on your schedule</p>
+  </div>
+
+  <div class="class-info-bar" id="class-info-bar">
+    <div>
+      <div class="cib-label">Current Class</div>
+      <div class="cib-subject" id="cib-subject">No active class</div>
+    </div>
+    <div class="cib-right">
+      <div class="cib-time" id="cib-time">—</div>
+      <div class="cib-status noclass" id="cib-status">No active class</div>
+    </div>
+  </div>
+
+  <div class="rec-layout">
+    <div>
+      <div class="camera-wrap">
+        <div class="camera-screen">
+          <video id="cam-video" autoplay playsinline></video>
+          <canvas id="cam-canvas" style="display:none;"></canvas>
+          <div class="camera-placeholder" id="cam-placeholder">
+            <div class="cam-icon-wrap">📷</div>
+            <div class="cam-ph-title">Camera inactive</div>
+            <div class="cam-ph-sub">Click Start Camera to begin</div>
+          </div>
+          <div class="scan-overlay" id="scan-overlay">
+            <div class="scan-line"></div>
+            <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div><div class="corner corner-br"></div>
+          </div>
+          <div class="face-box" id="face-box" style="width:140px;height:160px;top:20%;left:50%;transform:translateX(-50%);">
+            <div class="face-box-label" id="face-label">Detecting…</div>
+          </div>
+        </div>
+        <div class="camera-controls">
+          <button class="btn btn-primary"   id="btn-start-cam" onclick="startCamera()">▶ Start Camera</button>
+          <button class="btn btn-secondary" id="btn-scan"      onclick="scanFace()" disabled>⚡ Scan Face</button>
+          <button class="btn btn-danger"    id="btn-stop-cam"  onclick="stopCamera()" disabled>■ Stop</button>
+          <div class="cam-status-text" id="cam-status">Camera off</div>
+        </div>
+      </div>
+      <div class="result-card" id="result-card">
+        <div class="result-pill success" id="result-pill">✓ Recognized</div>
+        <div class="result-name"   id="result-name">—</div>
+        <div class="result-detail" id="result-detail">—</div>
+        <div class="conf-bar"><div class="conf-fill" id="conf-fill" style="width:0%"></div></div>
+        <div class="conf-label"><span>Confidence score</span><span id="conf-pct">—</span></div>
+      </div>
+    </div>
+    <div class="rec-log">
+      <div class="panel-header">
+        <span class="panel-title">Session Log</span>
+        <span class="chip" id="log-count">0 entries</span>
+      </div>
+      <div class="log-list" id="rec-log-list">
+        <div class="empty-msg">No scans yet this session</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PEOPLE ===== -->
+<div class="page" id="page-people">
+  <div class="page-header">
+    <div class="page-eyebrow">Registered Persons</div>
+    <h1 class="page-title">All <span class="normal">Enrolled People</span></h1>
+    <p class="page-sub">View, search and remove registered faces from the system</p>
+  </div>
+
+  <!-- Stats row -->
+  <div class="people-stats">
+    <div class="pstat">
+      <div class="pstat-val" id="pstat-total" style="color:var(--p700);">—</div>
+      <div class="pstat-label">Total People</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-val" id="pstat-depts" style="color:var(--teal);">—</div>
+      <div class="pstat-label">Departments</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-val" id="pstat-filtered" style="color:var(--green);">—</div>
+      <div class="pstat-label">Showing</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar" style="margin-bottom:1.5rem;">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" placeholder="Search by name or ID…" id="people-search" oninput="filterPeople()">
+    </div>
+    <select class="filter-select" id="people-dept" onchange="filterPeople()">
+      <option value="">All departments</option>
+      <option>Engineering</option>
+      <option>Design</option>
+      <option>Marketing</option>
+      <option>Operations</option>
+      <option>Finance</option>
+      <option>HR</option>
+    </select>
+    <button class="btn btn-secondary" onclick="loadPeople()">↺ Refresh</button>
+    <button class="btn btn-primary"   onclick="showPage('enroll',null);document.querySelectorAll('.nav-tab').forEach(t=>{if(t.textContent.trim()==='Enroll')t.classList.add('active');else t.classList.remove('active');})">+ Enroll New</button>
+  </div>
+
+  <!-- Cards grid -->
+  <div class="people-grid" id="people-grid">
+    <div class="panel" style="grid-column:1/-1;padding:3rem;text-align:center;">
+      <div style="font-size:2rem;margin-bottom:12px;">⏳</div>
+      <div style="font-size:1rem;font-weight:700;color:var(--ink-s);">Loading people...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SCHEDULE ===== -->
+<div class="page" id="page-schedule">
+  <div class="page-header">
+    <div class="page-eyebrow">Class Schedule</div>
+    <h1 class="page-title">Set Up <span class="normal">Class Timings</span></h1>
+    <p class="page-sub">Define when each class starts and ends — attendance status is determined automatically</p>
+  </div>
+
+  <div class="schedule-wrap" id="schedule-cards"></div>
+
+  <div class="setup-section" id="schedule-form">
+    <div class="setup-title">Add a New Class</div>
+    <div class="setup-sub">The grace period is how many minutes after start time a student can still be marked "Present" instead of "Late"</div>
+    <input type="hidden" id="sch-edit-idx" value="">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-bottom:1.2rem;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Subject / Class Name</label>
+        <input type="text" id="sch-subject" placeholder="e.g. Mathematics, Physics Lab">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Teacher (optional)</label>
+        <input type="text" id="sch-teacher" placeholder="e.g. Prof. Sharma">
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1.2rem;margin-bottom:1.4rem;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Start Time</label>
+        <input type="time" id="sch-start">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>End Time</label>
+        <input type="time" id="sch-end">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Grace Period (min)</label>
+        <input type="number" id="sch-grace" value="10" min="0" max="60">
+        <div class="window-note">Arrive within this many minutes = Present</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Room (optional)</label>
+        <input type="text" id="sch-room" placeholder="e.g. A-101">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Days of the week</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;" id="day-buttons">
+        <label class="day-lbl" id="day-lbl-Mon" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Mon" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Mon
+        </label>
+        <label class="day-lbl" id="day-lbl-Tue" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Tue" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Tue
+        </label>
+        <label class="day-lbl" id="day-lbl-Wed" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Wed" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Wed
+        </label>
+        <label class="day-lbl" id="day-lbl-Thu" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Thu" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Thu
+        </label>
+        <label class="day-lbl" id="day-lbl-Fri" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Fri" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Fri
+        </label>
+        <label class="day-lbl" id="day-lbl-Sat" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Sat" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Sat
+        </label>
+        <label class="day-lbl" id="day-lbl-Sun" style="display:flex;align-items:center;gap:8px;font-size:.92rem;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;background:var(--s1);padding:9px 18px;border-radius:var(--r-xs);border:1.5px solid var(--border);transition:all .15s;">
+          <input type="checkbox" class="day-cb" value="Sun" style="width:auto;padding:0;border:none;accent-color:var(--p600);" onchange="updateDayLabel(this)"> Sun
+        </label>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:.5rem;">
+      <button class="btn btn-primary" id="add-sch-btn" onclick="addSchedule()">+ Add Class</button>
+      <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>
+    </div>
+
+    <div style="margin-top:1.6rem;padding:1.2rem 1.5rem;background:var(--p50);border-radius:var(--r-sm);border:1.5px solid var(--p200);">
+      <div style="font-size:.8rem;font-weight:800;color:var(--p700);margin-bottom:8px;text-transform:uppercase;letter-spacing:1.2px;">How it works — Example</div>
+      <div style="font-size:.92rem;color:var(--ink-s);line-height:2.1;font-weight:500;">
+        Subject: <strong style="color:var(--ink);">Mathematics</strong> &nbsp;·&nbsp; Start: <strong style="color:var(--ink);">09:00</strong> &nbsp;·&nbsp; End: <strong style="color:var(--ink);">10:00</strong> &nbsp;·&nbsp; Grace: <strong style="color:var(--ink);">10 min</strong><br>
+        → Scan between <strong style="color:var(--green);">09:00 – 09:10</strong> = <span style="background:var(--green-l);color:var(--green);padding:2px 10px;border-radius:20px;font-weight:800;font-size:.82rem;">PRESENT</span><br>
+        → Scan between <strong style="color:var(--amber);">09:11 – 10:00</strong> = <span style="background:var(--amber-l);color:var(--amber);padding:2px 10px;border-radius:20px;font-weight:800;font-size:.82rem;">LATE</span><br>
+        → Scan outside class hours = <span style="background:var(--s2);color:var(--ink-s);padding:2px 10px;border-radius:20px;font-weight:800;font-size:.82rem;">PRESENT</span> (no active class)
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ENROLL ===== -->
+<div class="page" id="page-enroll">
+  <div class="page-header">
+    <div class="page-eyebrow">Registration</div>
+    <h1 class="page-title">Enroll a <span class="normal">New Person</span></h1>
+    <p class="page-sub">Register a face in the system for automatic recognition</p>
+  </div>
+  <div class="enroll-grid">
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Personal Details</span></div>
+      <div class="panel-body">
+        <div class="form-group"><label>Full Name</label><input type="text" id="enroll-name" placeholder="e.g. Priya Sharma"></div>
+        <div class="form-group"><label>Employee / Student ID</label><input type="text" id="enroll-id" placeholder="e.g. EMP-0042"></div>
+        <div class="form-group">
+          <label>Department</label>
+          <select id="enroll-dept">
+            <option value="">Select department</option>
+            <option>Engineering</option><option>Design</option><option>Marketing</option>
+            <option>Operations</option><option>Finance</option><option>HR</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Role</label><input type="text" id="enroll-role" placeholder="e.g. Software Engineer"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="enroll-email" placeholder="e.g. priya@company.com"></div>
+        <button class="btn btn-primary btn-full" onclick="enrollPerson()">✓ Register Person</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span class="panel-title">Face Samples</span><span class="chip">4 angles</span></div>
+      <div class="panel-body">
+        <p style="font-size:.88rem;color:var(--ink-s);margin-bottom:14px;line-height:1.65;font-weight:500;">Capture 4 photos from different angles for best accuracy.</p>
+        <div class="photo-grid">
+          <div class="photo-slot" onclick="captureEnrollPhoto(0)" id="slot-0"><span>+</span><span class="photo-slot-label">Front</span></div>
+          <div class="photo-slot" onclick="captureEnrollPhoto(1)" id="slot-1"><span>+</span><span class="photo-slot-label">Left</span></div>
+          <div class="photo-slot" onclick="captureEnrollPhoto(2)" id="slot-2"><span>+</span><span class="photo-slot-label">Right</span></div>
+          <div class="photo-slot" onclick="captureEnrollPhoto(3)" id="slot-3"><span>+</span><span class="photo-slot-label">Up</span></div>
+        </div>
+        <div style="margin-top:1rem;">
+          <video id="enroll-video" autoplay playsinline></video>
+          <canvas id="enroll-canvas" style="display:none;"></canvas>
+          <button class="btn btn-secondary btn-full" id="btn-enroll-cam" onclick="startEnrollCamera()" style="margin-top:10px;">📷 Open Camera for Photos</button>
+        </div>
+        <div class="tip-box" style="margin-top:1rem;">
+          <div class="tip-title">Tips for best accuracy</div>
+          <div class="tip-text">1. Even lighting on face<br>2. Look straight for photo 1<br>3. Slight left / right for 2 &amp; 3<br>4. Chin up slightly for photo 4</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:1.5rem;">
+    <div class="panel-header">
+      <span class="panel-title">All Enrolled People</span>
+      <span class="chip" id="enrolled-count-tag">0 total</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Name</th><th>ID</th><th>Department</th><th>Role</th></tr></thead>
+        <tbody id="enrolled-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RECORDS ===== -->
+<div class="page" id="page-records">
+  <div class="page-header">
+    <div class="page-eyebrow">History</div>
+    <h1 class="page-title">Attendance <span class="normal">Records</span></h1>
+    <p class="page-sub" id="records-date-label">Today's attendance log</p>
+  </div>
+
+  <!-- Date navigator -->
+  <div style="background:var(--white);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:1.3rem 1.6rem;margin-bottom:1.5rem;box-shadow:var(--sh-sm);">
+    <div style="font-size:.76rem;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--ink-s);margin-bottom:10px;">Select Date</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input type="date" id="date-filter"
+        style="background:var(--s1);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:10px 16px;color:var(--ink);font-family:var(--font);font-size:.95rem;font-weight:600;outline:none;transition:border-color .18s,box-shadow .18s;cursor:pointer;"
+        onchange="loadRecords()"
+        onfocus="this.style.borderColor='var(--p400)';this.style.boxShadow='0 0 0 4px rgba(167,139,250,.15)'"
+        onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+      <button class="btn btn-secondary btn-sm" onclick="setToday()">📅 Today</button>
+      <button class="btn btn-secondary btn-sm" onclick="setYesterday()">⬅ Yesterday</button>
+      <button class="btn btn-secondary btn-sm" onclick="clearDateFilter()">All Today</button>
+      <div style="flex:1;"></div>
+      <div style="font-size:.82rem;font-weight:600;color:var(--ink-g);">Records are saved permanently — pick any past date to view history</div>
+    </div>
+  </div>
+
+  <!-- Summary mini stats -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+    <div style="background:var(--white);border:1.5px solid var(--border);border-radius:var(--r-md);padding:1rem 1.2rem;box-shadow:var(--sh-xs);text-align:center;">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--p700);letter-spacing:-1px;" id="rec-stat-total">—</div>
+      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-g);margin-top:3px;">Total</div>
+    </div>
+    <div style="background:var(--green-l);border:1.5px solid var(--green-b);border-radius:var(--r-md);padding:1rem 1.2rem;box-shadow:var(--sh-xs);text-align:center;">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--green);letter-spacing:-1px;" id="rec-stat-present">—</div>
+      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-top:3px;">Present</div>
+    </div>
+    <div style="background:var(--amber-l);border:1.5px solid var(--amber-b);border-radius:var(--r-md);padding:1rem 1.2rem;box-shadow:var(--sh-xs);text-align:center;">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--amber);letter-spacing:-1px;" id="rec-stat-late">—</div>
+      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--amber);margin-top:3px;">Late</div>
+    </div>
+    <div style="background:var(--red-l);border:1.5px solid var(--red-b);border-radius:var(--r-md);padding:1rem 1.2rem;box-shadow:var(--sh-xs);text-align:center;">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--red);letter-spacing:-1px;" id="rec-stat-absent">—</div>
+      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--red);margin-top:3px;">Absent</div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" placeholder="Search by name or ID…" id="search-input" oninput="filterRecords()">
+    </div>
+    <select class="filter-select" id="filter-status" onchange="filterRecords()">
+      <option value="">All status</option>
+      <option>Present</option>
+      <option>Late</option>
+      <option>Absent</option>
+    </select>
+    <button class="btn btn-secondary" onclick="loadRecords()">↺ Refresh</button>
+    <button class="btn btn-primary"   onclick="exportCSV()">⬇ Export CSV</button>
+  </div>
+
+  <!-- Table -->
+  <div class="panel">
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>ID</th>
+            <th>Date</th>
+            <th>Check-in</th>
+            <th>Confidence</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DELETE MODAL ===== -->
+<div class="modal-bg" id="delete-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-icon">🗑️</div>
+    <div class="modal-title">Remove Person</div>
+    <div class="modal-sub">
+      Are you sure you want to remove <strong id="delete-name">—</strong> (<span id="delete-id">—</span>) from the system?
+      <br><br>
+      This will delete their face data and they won't be recognized anymore. Their attendance history will remain.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="deletePerson()">🗑 Yes, Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast">
+  <span class="toast-dot" id="toast-dot"></span>
+  <span id="toast-msg">Done</span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

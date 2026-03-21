@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Face photos (too large for GitHub)
+faces/
+
+# Database (personal data)
+attendance.db
+
+# Temp files
+temp_recognize.jpg
+temp_frame.jpg
+
+# VS Code
+.vscode/
+
+# Environment
+venv/
+.env
