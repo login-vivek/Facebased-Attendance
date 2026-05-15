@@ -1,4 +1,4 @@
-const API = "http://localhost:5000";
+const API = "https://facebased-attendance.onrender.com";
 
 let cameraStream   = null;
 let enrollStream   = null;
