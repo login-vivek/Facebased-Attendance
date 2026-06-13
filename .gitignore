@@ -1,41 +1,21 @@
-# Python
+# Python cache
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-*.pyd
-.Python
-*.egg
-*.egg-info/
-dist/
-build/
-.eggs/
-.venv/
-venv/
-env/
 
-# Data directories (large binary files - don't commit)
-uploads/
-recognized_faces/
-output_images/
+# Face photos (too large for GitHub)
+faces/
 
-# Models and embeddings (large files - use persistent disk or object storage)
-models/
-embeddings/
+# Database (personal data)
+attendance.db
 
-# Keep dataset structure but not the actual images
-datasets/*/augmented/
-datasets/*/temp_faces/
-# Comment out the next line if you want to commit labeled faces
-# datasets/*/labeled_faces/
+# Temp files
+temp_recognize.jpg
+temp_frame.jpg
+
+# VS Code
+.vscode/
 
 # Environment
+venv/
 .env
-.env.*
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db

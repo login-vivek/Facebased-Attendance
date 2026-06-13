@@ -1,254 +1,342 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from deepface import DeepFace
+from database import init_db, get_all_persons, get_today_attendance, log_attendance
+import cv2
+import sqlite3
 import os
-from flask import Flask, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
-import uuid
-import json # For handling roll number assignment data
-import shutil # For moving files
-
-# Import your modules
-from config import Config
-from face_utils import detect_and_crop_faces, recognize_faces_in_photo
-from train import augment_faces, train_siamese_network_for_classroom
+import base64
+import numpy as np
+import shutil
+from datetime import datetime
 
 app = Flask(__name__)
-app.config.from_object(Config)
-app.secret_key = Config.SECRET_KEY
+CORS(app, origins="*", allow_headers="*", methods=["GET", "POST", "DELETE", "OPTIONS"])
 
-# --- Helper functions ---
-# In your allowed_file function
-def allowed_file(filename):
-    if not '.' in filename:
-        return False
-    # Get the part after the last dot, and add a leading dot back
-    ext = '.' + filename.rsplit('.', 1)[1].lower()
-    return ext in app.config['ALLOWED_EXTENSIONS']
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
+        return response
 
-def classroom_model_exists(classroom_id):
-    """Checks if a trained model exists for the given classroom ID."""
-    model_path = os.path.join(app.config['MODELS_FOLDER'], classroom_id, 'siamese_model_best.pth')
-    return os.path.exists(model_path)
+@app.after_request
+def add_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
+    response.headers['ngrok-skip-browser-warning'] = 'true'
+    return response
 
-# --- Flask Routes ---
+DB_PATH   = "attendance.db"
+FACES_DIR = "faces"
+THRESHOLD = 0.6
 
-@app.route('/', methods=['GET'])
+init_db()
+
+
+# ──────────────────────────────────────────
+#  HELPERS
+# ──────────────────────────────────────────
+
+def base64_to_image(b64_string):
+    if "," in b64_string:
+        b64_string = b64_string.split(",")[1]
+    img_data = base64.b64decode(b64_string)
+    np_arr   = np.frombuffer(img_data, np.uint8)
+    return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+
+def get_enrolled():
+    conn   = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.id, p.name, p.employee_id, f.photo_path
+        FROM persons p
+        JOIN face_photos f ON p.id = f.person_id
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+# ──────────────────────────────────────────
+#  BASIC
+# ──────────────────────────────────────────
+
+@app.route("/")
 def home():
-    return jsonify({"message": "Face Recognition Flask API is running!"})
-
-@app.route('/classroom/<classroom_id>/detect_faces', methods=['POST'])
-def detect_faces_api(classroom_id):
-    """
-    Endpoint to upload a group photo and detect faces,
-    assigning temporary IDs.
-    """
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part in the request"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        # Save to a temporary upload folder
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        try:
-            # Call the detection utility function
-            face_data = detect_and_crop_faces(filepath, classroom_id)
-            
-            # Remove the uploaded group photo after processing
-            os.remove(filepath)
-
-            if not face_data:
-                return jsonify({"message": "No faces detected in the photo.", "faces": []}), 200
-
-            # Prepare response: provide temp face ID, bounding box, and a URL for the cropped face
-            response_faces = []
-            for face_info in face_data:
-                face_image_filename = os.path.basename(face_info['image_path'])
-                response_faces.append({
-                    "face_id": face_info['face_id'],
-                    "bbox": face_info['bbox'],
-                    "face_image_url": f"/datasets/{classroom_id}/temp_faces/{face_image_filename}"
-                })
-            
-            return jsonify({
-                "message": f"Successfully detected {len(response_faces)} faces.",
-                "classroom_id": classroom_id,
-                "faces": response_faces
-            }), 200
-        except Exception as e:
-            # Clean up the uploaded file in case of an error
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            app.logger.error(f"Error during face detection for {classroom_id}: {e}", exc_info=True)
-            return jsonify({"error": f"Internal server error during face detection: {str(e)}"}), 500
-    else:
-        return jsonify({"error": "File type not allowed"}), 400
-
-@app.route('/classroom/<classroom_id>/assign_roll_numbers', methods=['POST'])
-def assign_roll_numbers_api(classroom_id):
-    """
-    Endpoint to assign roll numbers to detected temporary faces.
-    Expects JSON body: `{"assignments": [{"face_id": "temp_001", "roll_number": "Roll_001"}, ...]}`
-    """
-    data = request.get_json()
-    if not data or 'assignments' not in data:
-        return jsonify({"error": "Invalid request body. Expected {'assignments': [{'face_id': '...', 'roll_number': '...'}]}"}), 400
-
-    assignments = data['assignments']
-    if not assignments:
-        return jsonify({"message": "No assignments provided."}), 200
-
-    temp_faces_dir = os.path.join(app.config['DATASETS_FOLDER'], classroom_id, "temp_faces")
-    labeled_faces_dir = os.path.join(app.config['DATASETS_FOLDER'], classroom_id, "labeled_faces")
-    os.makedirs(labeled_faces_dir, exist_ok=True)
-
-    successful_assignments = []
-    failed_assignments = []
-
-    for assignment in assignments:
-        face_id = assignment.get('face_id')
-        roll_number = assignment.get('roll_number')
-
-        if not face_id or not roll_number:
-            failed_assignments.append({"assignment": assignment, "reason": "Missing face_id or roll_number"})
-            continue
-
-        temp_face_filename = f"{face_id}.jpg"
-        temp_face_path = os.path.join(temp_faces_dir, temp_face_filename)
-
-        if os.path.exists(temp_face_path):
-            # Move and rename the file
-            new_filename = f"{roll_number}.jpg"
-            new_face_path = os.path.join(labeled_faces_dir, new_filename)
-            try:
-                shutil.move(temp_face_path, new_face_path)
-                successful_assignments.append({"face_id": face_id, "roll_number": roll_number, "new_path": new_face_path})
-            except Exception as e:
-                failed_assignments.append({"assignment": assignment, "reason": f"File move error: {str(e)}"})
-        else:
-            failed_assignments.append({"assignment": assignment, "reason": f"Temporary face image not found: {temp_face_path}"})
-    
-    # Optionally, remove the temp_faces directory if all are moved
-    if os.path.exists(temp_faces_dir) and not os.listdir(temp_faces_dir):
-        os.rmdir(temp_faces_dir)
-
-    return jsonify({
-        "message": f"Assigned {len(successful_assignments)} roll numbers.",
-        "successful": successful_assignments,
-        "failed": failed_assignments
-    }), 200
+    return jsonify({"status": "FaceAttend API running!"})
 
 
-@app.route('/classroom/<classroom_id>/train_model', methods=['POST'])
-def train_model_api(classroom_id):
-    """
-    Endpoint to trigger the training of the Siamese Network for a given classroom.
-    """
-    if classroom_model_exists(classroom_id):
-        return jsonify({"message": f"Model for classroom '{classroom_id}' already trained. To retrain, delete existing model files."}), 200
+# ──────────────────────────────────────────
+#  PERSONS
+# ──────────────────────────────────────────
 
+@app.route("/persons", methods=["GET"])
+def persons():
+    conn   = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, employee_id, department, role FROM persons")
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        result.append({
+            "id":          row[0],
+            "name":        row[1],
+            "employee_id": row[2],
+            "department":  row[3],
+            "role":        row[4],
+            "email":       ""
+        })
+    return jsonify(result)
+
+
+# ──────────────────────────────────────────
+#  DELETE PERSON
+# ──────────────────────────────────────────
+
+@app.route("/persons/<employee_id>", methods=["DELETE"])
+def delete_person(employee_id):
+    conn   = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM persons WHERE employee_id = ?", (employee_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "error": f"No person found with ID: {employee_id}"}), 404
+    person_name = row[0]
     try:
-        # Collect all labeled images for this classroom
-        labeled_faces_dir = os.path.join(app.config['DATASETS_FOLDER'], classroom_id, "labeled_faces")
-        if not os.path.exists(labeled_faces_dir) or not os.listdir(labeled_faces_dir):
-            return jsonify({"error": f"No labeled faces found for classroom {classroom_id}. Please assign roll numbers first."}), 400
-
-        # Prepare face_data for augmentation (list of dicts with 'image_path' and 'label')
-        face_data_for_augmentation = []
-        for filename in os.listdir(labeled_faces_dir):
-            if filename.lower().endswith(app.config['ALLOWED_EXTENSIONS']):
-                label = os.path.splitext(filename)[0]
-                face_data_for_augmentation.append({'image_path': os.path.join(labeled_faces_dir, filename), 'label': label})
-
-        if not face_data_for_augmentation:
-            return jsonify({"error": f"No valid labeled face images found in {labeled_faces_dir}."}), 400
-
-        # Step 1: Augment faces
-        augmented_data = augment_faces(face_data_for_augmentation, classroom_id)
-        
-        # Step 2: Train the model
-        # train_siamese_network_for_classroom will handle combining original and augmented data internally
-        training_result = train_siamese_network_for_classroom(classroom_id)
-
-        return jsonify(training_result), 200
-    except ValueError as ve:
-        return jsonify({"error": str(ve)}), 400
+        cursor.execute("DELETE FROM face_photos WHERE employee_id = ?", (employee_id,))
+        cursor.execute("DELETE FROM persons WHERE employee_id = ?", (employee_id,))
+        conn.commit()
+        conn.close()
+        folder = os.path.join(FACES_DIR, employee_id)
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        print(f"[DELETE] Removed: {person_name} ({employee_id})")
+        return jsonify({
+            "success":     True,
+            "message":     f"{person_name} removed from the system",
+            "employee_id": employee_id
+        })
     except Exception as e:
-        app.logger.error(f"Error during model training for {classroom_id}: {e}", exc_info=True)
-        return jsonify({"error": f"Internal server error during training: {str(e)}"}), 500
+        conn.rollback()
+        conn.close()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/classroom/<classroom_id>/recognize_faces', methods=['POST'])
-def recognize_faces_api(classroom_id):
-    """
-    Endpoint to recognize faces in an attendance photo for a specific classroom.
-    """
-    if not classroom_model_exists(classroom_id):
-        return jsonify({"error": f"No trained model found for classroom '{classroom_id}'. Please train the model first."}), 404
+# ──────────────────────────────────────────
+#  ATTENDANCE
+# ──────────────────────────────────────────
 
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part in the request"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        try:
-            # Perform face recognition
-            recognition_results = recognize_faces_in_photo(filepath, classroom_id)
-            if "image_url" in recognition_results:
-                recognition_results["resultImage"] = recognition_results.pop("image_url")
-            
-            # Remove the uploaded photo after processing
-            os.remove(filepath)
-
-            return jsonify(recognition_results), 200
-        except FileNotFoundError as fnf_e:
-            return jsonify({"error": str(fnf_e), "status": "model_not_found"}), 404
-        except Exception as e:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            app.logger.error(f"Error during face recognition for {classroom_id}: {e}", exc_info=True)
-            return jsonify({"error": f"Internal server error during recognition: {str(e)}"}), 500
+@app.route("/attendance", methods=["GET"])
+def attendance():
+    date_filter = request.args.get("date", "").strip()
+    conn        = sqlite3.connect(DB_PATH)
+    cursor      = conn.cursor()
+    if date_filter:
+        cursor.execute(
+            "SELECT * FROM attendance_log WHERE date = ? ORDER BY check_in DESC",
+            (date_filter,)
+        )
     else:
-        return jsonify({"error": "File type not allowed"}), 400
+        today = datetime.today().date().isoformat()
+        cursor.execute(
+            "SELECT * FROM attendance_log WHERE date = ? ORDER BY check_in DESC",
+            (today,)
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        result.append({
+            "id":          row[0],
+            "person_id":   row[1],
+            "employee_id": row[2],
+            "name":        row[3],
+            "check_in":    row[4],
+            "date":        row[5],
+            "status":      row[6],
+            "confidence":  row[7]
+        })
+    return jsonify(result)
 
 
-@app.route('/classroom/<classroom_id>/status', methods=['GET'])
-def get_classroom_status(classroom_id):
-    """
-    Endpoint to check the training status of a classroom.
-    """
-    model_trained = classroom_model_exists(classroom_id)
-    labeled_faces_dir = os.path.join(app.config['DATASETS_FOLDER'], classroom_id, "labeled_faces")
-    labeled_faces_count = 0
-    if os.path.exists(labeled_faces_dir):
-        labeled_faces_count = len([f for f in os.listdir(labeled_faces_dir) if f.lower().endswith(app.config['ALLOWED_EXTENSIONS'])])
+# ──────────────────────────────────────────
+#  STATS
+# ──────────────────────────────────────────
 
+@app.route("/stats", methods=["GET"])
+def stats():
+    conn   = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    today  = datetime.today().date().isoformat()
+    cursor.execute("SELECT COUNT(*) FROM persons")
+    total = cursor.fetchone()[0]
+    cursor.execute(
+        "SELECT COUNT(*) FROM attendance_log WHERE date = ? AND status = 'Present'",
+        (today,)
+    )
+    present = cursor.fetchone()[0]
+    cursor.execute(
+        "SELECT COUNT(*) FROM attendance_log WHERE date = ? AND status = 'Late'",
+        (today,)
+    )
+    late = cursor.fetchone()[0]
+    conn.close()
     return jsonify({
-        "classroom_id": classroom_id,
-        "model_trained": model_trained,
-        "labeled_faces_count": labeled_faces_count,
-        "message": "Model trained" if model_trained else "Model not yet trained."
-    }), 200
-
-# Serve static files (e.g., cropped faces, annotated images)
-@app.route('/recognized_faces/<filename>')
-def serve_recognized_face(filename):
-    return send_from_directory(app.config['RECOGNIZED_FACES_FOLDER'], filename)
-
-@app.route('/output_images/<filename>')
-def serve_output_image(filename):
-    return send_from_directory(app.config['OUTPUT_IMAGES_FOLDER'], filename)
-
-@app.route('/datasets/<classroom_id>/temp_faces/<filename>')
-def serve_temp_face(classroom_id, filename):
-    return send_from_directory(os.path.join(app.config['DATASETS_FOLDER'], classroom_id, "temp_faces"), filename)
+        "total_enrolled": total,
+        "present_today":  present,
+        "late_today":     late,
+        "absent_today":   max(0, total - present - late),
+        "date":           today
+    })
 
 
-if __name__ == '__main__':
-    app.run(debug=Config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+# ──────────────────────────────────────────
+#  ENROLL
+# ──────────────────────────────────────────
+
+@app.route("/enroll", methods=["POST"])
+def enroll():
+    data        = request.json
+    name        = data.get("name")
+    employee_id = data.get("employee_id")
+    department  = data.get("department", "")
+    role        = data.get("role", "")
+    photos      = data.get("photos", [])
+    if not name or not employee_id or not photos:
+        return jsonify({"error": "name, employee_id and photos are required"}), 400
+    conn   = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO persons (name, employee_id, department, role)
+            VALUES (?, ?, ?, ?)
+        """, (name, employee_id, department, role))
+        conn.commit()
+        person_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({"error": f"ID '{employee_id}' already exists"}), 409
+    person_dir = os.path.join(FACES_DIR, employee_id)
+    os.makedirs(person_dir, exist_ok=True)
+    saved = 0
+    for i, photo_b64 in enumerate(photos):
+        try:
+            img  = base64_to_image(photo_b64)
+            path = os.path.join(person_dir, f"{i + 1}.jpg")
+            cv2.imwrite(path, img)
+            cursor.execute("""
+                INSERT INTO face_photos (person_id, employee_id, photo_path)
+                VALUES (?, ?, ?)
+            """, (person_id, employee_id, path))
+            saved += 1
+        except Exception as e:
+            print(f"[ENROLL] Photo {i + 1} error: {e}")
+    conn.commit()
+    conn.close()
+    return jsonify({
+        "success":   True,
+        "message":   f"{name} enrolled successfully with {saved} photo(s)!",
+        "person_id": person_id
+    })
+
+
+# ──────────────────────────────────────────
+#  RECOGNIZE
+# ──────────────────────────────────────────
+
+@app.route("/recognize", methods=["POST"])
+def recognize():
+    data            = request.json
+    image_b64       = data.get("image")
+    override_status = data.get("status", None)
+    if not image_b64:
+        return jsonify({"error": "No image provided"}), 400
+    frame     = base64_to_image(image_b64)
+    temp_path = "temp_recognize.jpg"
+    cv2.imwrite(temp_path, frame)
+    enrolled = get_enrolled()
+    if not enrolled:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return jsonify({"error": "No enrolled faces found. Enroll someone first."}), 404
+    best_match    = None
+    best_distance = 999
+    for person_id, name, employee_id, photo_path in enrolled:
+        if not os.path.exists(photo_path):
+            continue
+        try:
+            result   = DeepFace.verify(
+                img1_path=temp_path,
+                img2_path=photo_path,
+                model_name="VGG-Face",
+                enforce_detection=False
+            )
+            distance = result["distance"]
+            if distance < best_distance:
+                best_distance = distance
+                best_match    = (person_id, name, employee_id)
+        except Exception as e:
+            print(f"[RECOGNIZE] Error: {e}")
+            continue
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+    if best_match and best_distance < THRESHOLD:
+        person_id, name, employee_id = best_match
+        confidence = round((1 - best_distance) * 100, 1)
+        if override_status in ("Present", "Late"):
+            status = override_status
+        else:
+            hour   = datetime.now().hour
+            status = "Late" if hour >= 9 else "Present"
+        conn   = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        today  = datetime.today().date().isoformat()
+        now    = datetime.now().strftime("%H:%M:%S")
+        cursor.execute(
+            "SELECT id FROM attendance_log WHERE employee_id = ? AND date = ?",
+            (employee_id, today)
+        )
+        existing = cursor.fetchone()
+        if not existing:
+            cursor.execute("""
+                INSERT INTO attendance_log
+                    (person_id, employee_id, name, date, check_in, status, confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (person_id, employee_id, name, today, now, status, confidence))
+            conn.commit()
+            attendance_logged = True
+        else:
+            attendance_logged = False
+        conn.close()
+        return jsonify({
+            "recognized":        True,
+            "name":              name,
+            "employee_id":       employee_id,
+            "confidence":        confidence,
+            "status":            status,
+            "attendance_logged": attendance_logged
+        })
+    return jsonify({
+        "recognized": False,
+        "message":    "Face not recognized"
+    })
+
+
+# ──────────────────────────────────────────
+#  RUN
+# ──────────────────────────────────────────
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print("=" * 45)
+    print("  FaceAttend API starting...")
+    print(f"  Running on port {port}")
+    print("=" * 45)
+    app.run(debug=False, host="0.0.0.0", port=port)
