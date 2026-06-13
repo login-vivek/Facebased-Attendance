@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 import uuid
 import json
@@ -28,7 +28,7 @@ def classroom_model_exists(classroom_id):
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({"message": "Face Recognition Flask API is running!"})
+    return send_file(os.path.join(app.root_path, 'static', 'index.html'))
 
 @app.route('/classroom/<classroom_id>/detect_faces', methods=['POST'])
 def detect_faces_api(classroom_id):
