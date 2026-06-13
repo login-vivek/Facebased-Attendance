@@ -8,10 +8,14 @@ import shutil
 from config import Config
 from face_utils import detect_and_crop_faces, recognize_faces_in_photo
 from train import augment_faces, train_siamese_network_for_classroom
+from auth import init_db, create_user, verify_user, generate_token, login_required
 
 app = Flask(__name__)
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
+
+# Initialize user database on startup
+init_db()
 
 def allowed_file(filename):
     if not '.' in filename:
@@ -30,7 +34,47 @@ def classroom_model_exists(classroom_id):
 def home():
     return send_file(os.path.join(app.root_path, 'static', 'index.html'))
 
+# ── Auth Routes ───────────────────────────────────────────────────────────────
+
+@app.route('/auth/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided.'}), 400
+    username = data.get('username', '').strip()
+    email    = data.get('email', '').strip()
+    password = data.get('password', '')
+    if not username or not email or not password:
+        return jsonify({'error': 'username, email and password are required.'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters.'}), 400
+    ok, msg = create_user(username, email, password)
+    if not ok:
+        return jsonify({'error': msg}), 409
+    return jsonify({'message': msg}), 201
+
+@app.route('/auth/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided.'}), 400
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    if not username or not password:
+        return jsonify({'error': 'username and password are required.'}), 400
+    user = verify_user(username, password)
+    if not user:
+        return jsonify({'error': 'Invalid username or password.'}), 401
+    token = generate_token(user)
+    return jsonify({'token': token, 'username': user['username']}), 200
+
+@app.route('/auth/me', methods=['GET'])
+@login_required
+def me():
+    return jsonify({'username': request.current_user['username']}), 200
+
 @app.route('/classroom/<classroom_id>/detect_faces', methods=['POST'])
+@login_required
 def detect_faces_api(classroom_id):
     """Upload a group photo and detect faces, assigning temporary IDs."""
     if 'file' not in request.files:
@@ -70,6 +114,7 @@ def detect_faces_api(classroom_id):
 
 
 @app.route('/classroom/<classroom_id>/assign_roll_numbers', methods=['POST'])
+@login_required
 def assign_roll_numbers_api(classroom_id):
     """Assign roll numbers to detected temporary faces."""
     data = request.get_json()
@@ -115,6 +160,7 @@ def assign_roll_numbers_api(classroom_id):
 
 
 @app.route('/classroom/<classroom_id>/train_model', methods=['POST'])
+@login_required
 def train_model_api(classroom_id):
     """Trigger training of the Siamese Network for a given classroom."""
     if classroom_model_exists(classroom_id):
@@ -144,6 +190,7 @@ def train_model_api(classroom_id):
 
 
 @app.route('/classroom/<classroom_id>/recognize_faces', methods=['POST'])
+@login_required
 def recognize_faces_api(classroom_id):
     """Recognize faces in an attendance photo for a specific classroom."""
     if not classroom_model_exists(classroom_id):
@@ -176,6 +223,7 @@ def recognize_faces_api(classroom_id):
 
 
 @app.route('/classroom/<classroom_id>/status', methods=['GET'])
+@login_required
 def get_classroom_status(classroom_id):
     """Check the training status of a classroom."""
     model_trained = classroom_model_exists(classroom_id)
