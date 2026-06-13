@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Data directories (large binary files - don't commit)
+uploads/
+recognized_faces/
+output_images/
+
+# Models and embeddings (large files - use persistent disk or object storage)
+models/
+embeddings/
+
+# Keep dataset structure but not the actual images
+datasets/*/augmented/
+datasets/*/temp_faces/
+# Comment out the next line if you want to commit labeled faces
+# datasets/*/labeled_faces/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
