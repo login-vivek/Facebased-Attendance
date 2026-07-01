@@ -17,9 +17,12 @@ app.secret_key = Config.SECRET_KEY
 # Allow inline scripts for the single-page UI
 @app.after_request
 def add_headers(response):
+    # Remove any CSP set upstream, then apply ours
+    response.headers.discard('Content-Security-Policy')
+    response.headers.discard('X-Content-Security-Policy')
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:; "
         "connect-src 'self'; "
