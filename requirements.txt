@@ -1,5 +1,7 @@
 setuptools>=68.0.0
 PyJWT==2.8.0
+pymongo==4.7.2
+dnspython==2.6.1
 torch==2.2.2
 torchvision==0.17.2
 facenet-pytorch==2.5.3

@@ -1,32 +1,39 @@
 import os
-import sqlite3
 import hashlib
 import secrets
 import jwt
 import datetime
 from functools import wraps
 from flask import request, jsonify
+from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 from config import Config
 
-DB_PATH = os.path.join(Config.BASE_DIR, 'users.db')
+# ── MongoDB connection ────────────────────────────────────────────────────────
 
-# ── DB setup ──────────────────────────────────────────────────────────────────
+_client = None
+_db = None
+
+def get_db():
+    global _client, _db
+    if _db is None:
+        mongo_uri = os.environ.get('MONGO_URI')
+        if not mongo_uri:
+            raise RuntimeError('MONGO_URI environment variable is not set.')
+        _client = MongoClient(mongo_uri)
+        _db = _client['attendance_db']
+        # Unique indexes
+        _db.users.create_index('username', unique=True)
+        _db.users.create_index('email', unique=True)
+    return _db
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT    UNIQUE NOT NULL,
-            email    TEXT    UNIQUE NOT NULL,
-            password TEXT    NOT NULL,
-            salt     TEXT    NOT NULL,
-            created  TEXT    NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    """Call on app startup to ensure indexes exist."""
+    try:
+        get_db()
+        print('MongoDB connected successfully.')
+    except Exception as e:
+        print(f'Warning: MongoDB connection failed: {e}')
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
@@ -39,37 +46,36 @@ def hash_password(password, salt=None):
 # ── User ops ──────────────────────────────────────────────────────────────────
 
 def create_user(username, email, password):
+    db = get_db()
     hashed, salt = hash_password(password)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     try:
-        c.execute(
-            'INSERT INTO users (username, email, password, salt, created) VALUES (?, ?, ?, ?, ?)',
-            (username.strip(), email.strip().lower(), hashed, salt,
-             datetime.datetime.utcnow().isoformat())
-        )
-        conn.commit()
-        return True, "User created successfully."
-    except sqlite3.IntegrityError as e:
+        db.users.insert_one({
+            'username': username.strip(),
+            'email':    email.strip().lower(),
+            'password': hashed,
+            'salt':     salt,
+            'created':  datetime.datetime.utcnow()
+        })
+        return True, 'User created successfully.'
+    except DuplicateKeyError as e:
         if 'username' in str(e):
-            return False, "Username already taken."
-        return False, "Email already registered."
-    finally:
-        conn.close()
+            return False, 'Username already taken.'
+        return False, 'Email already registered.'
+    except Exception as e:
+        return False, f'Database error: {str(e)}'
 
 def verify_user(username, password):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT id, username, email, password, salt FROM users WHERE username = ?',
-              (username.strip(),))
-    row = c.fetchone()
-    conn.close()
-    if not row:
+    db = get_db()
+    user = db.users.find_one({'username': username.strip()})
+    if not user:
         return None
-    uid, uname, email, stored_hash, salt = row
-    hashed, _ = hash_password(password, salt)
-    if hashed == stored_hash:
-        return {'id': uid, 'username': uname, 'email': email}
+    hashed, _ = hash_password(password, user['salt'])
+    if hashed == user['password']:
+        return {
+            'id':       str(user['_id']),
+            'username': user['username'],
+            'email':    user['email']
+        }
     return None
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────
@@ -100,7 +106,6 @@ def login_required(f):
         if auth_header.startswith('Bearer '):
             token = auth_header.split(' ', 1)[1]
         if not token:
-            # Also check cookie for browser requests
             token = request.cookies.get('token')
         if not token:
             return jsonify({'error': 'Authentication required.'}), 401
