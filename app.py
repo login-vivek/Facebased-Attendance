@@ -32,7 +32,8 @@ def classroom_model_exists(classroom_id):
 
 @app.route('/', methods=['GET'])
 def home():
-    return send_file(os.path.join(app.root_path, 'static', 'index.html'))
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    return send_from_directory(static_dir, 'index.html')
 
 # ── Auth Routes ───────────────────────────────────────────────────────────────
 
