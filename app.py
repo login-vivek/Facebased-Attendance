@@ -31,8 +31,11 @@ def add_headers(response):
     )
     return response
 
-# Initialize user database on startup
-init_db()
+# Initialize user database on startup (non-fatal)
+try:
+    init_db()
+except Exception as _e:
+    print(f'Warning: DB init failed: {_e}')
 
 def allowed_file(filename):
     if not '.' in filename:
