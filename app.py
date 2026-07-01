@@ -14,6 +14,20 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 
+# Allow inline scripts for the single-page UI
+@app.after_request
+def add_headers(response):
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "media-src 'self' blob:; "
+        "worker-src blob:;"
+    )
+    return response
+
 # Initialize user database on startup
 init_db()
 
