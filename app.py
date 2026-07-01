@@ -10,7 +10,7 @@ from face_utils import detect_and_crop_faces, recognize_faces_in_photo
 from train import augment_faces, train_siamese_network_for_classroom
 from auth import init_db, create_user, verify_user, generate_token, login_required
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 
@@ -32,8 +32,10 @@ def classroom_model_exists(classroom_id):
 
 @app.route('/', methods=['GET'])
 def home():
-    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
-    return send_from_directory(static_dir, 'index.html')
+    index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'index.html')
+    with open(index_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    return content, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 # ── Auth Routes ───────────────────────────────────────────────────────────────
 
