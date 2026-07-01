@@ -20,7 +20,7 @@ def get_db():
         mongo_uri = os.environ.get('MONGO_URI')
         if not mongo_uri:
             raise RuntimeError('MONGO_URI environment variable is not set.')
-        _client = MongoClient(mongo_uri)
+        _client = MongoClient(mongo_uri, connect=False)  # connect=False delays until first use
         _db = _client['attendance_db']
         # Unique indexes
         _db.users.create_index('username', unique=True)
@@ -31,9 +31,9 @@ def init_db():
     """Call on app startup to ensure indexes exist."""
     try:
         get_db()
-        print('MongoDB connected successfully.')
+        print('MongoDB configured.')
     except Exception as e:
-        print(f'Warning: MongoDB connection failed: {e}')
+        print(f'Warning: MongoDB configuration failed: {e}')
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
