@@ -1,606 +1,674 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Face-Based Attendance System</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Attendance System</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-light: #eff6ff;
+    --green: #16a34a;
+    --red: #dc2626;
+    --gray: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f9fafb;
+    --white: #ffffff;
+    --text: #111827;
+    --text-light: #6b7280;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
 
-    /* ── Auth Screen ── */
-    #authScreen {
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
-    }
-    .auth-box {
-      background: white; border-radius: 14px; padding: 40px 36px;
-      width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    }
-    .auth-box .logo { text-align: center; font-size: 2.4rem; margin-bottom: 8px; }
-    .auth-box h2 { text-align: center; font-size: 1.3rem; margin-bottom: 24px; color: #1a73e8; }
-    .auth-tabs { display: flex; margin-bottom: 24px; border-bottom: 2px solid #eee; }
-    .auth-tab {
-      flex: 1; text-align: center; padding: 10px; cursor: pointer;
-      font-weight: 500; color: #888; border-bottom: 2px solid transparent;
-      margin-bottom: -2px; transition: all 0.2s;
-    }
-    .auth-tab.active { color: #1a73e8; border-bottom-color: #1a73e8; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 5px; color: #555; }
-    .form-group input {
-      width: 100%; padding: 10px 14px; border: 1px solid #ddd;
-      border-radius: 8px; font-size: 0.95rem; transition: border-color 0.2s;
-    }
-    .form-group input:focus { outline: none; border-color: #1a73e8; }
-    .auth-error { color: #ea4335; font-size: 0.85rem; margin-bottom: 12px; min-height: 18px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Main App ── */
-    #appScreen { display: none; }
-    header {
-      background: #1a73e8; color: white; padding: 14px 28px;
-      display: flex; align-items: center; justify-content: space-between;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    }
-    .header-left { display: flex; align-items: center; gap: 10px; }
-    header h1 { font-size: 1.3rem; font-weight: 600; }
-    .user-info { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; }
-    .user-info span { opacity: 0.85; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
+  }
 
-    .container { max-width: 960px; margin: 28px auto; padding: 0 16px; }
-    .classroom-bar {
-      background: white; border-radius: 10px; padding: 14px 18px;
-      display: flex; gap: 10px; align-items: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1); margin-bottom: 22px;
-    }
-    .classroom-bar input {
-      flex: 1; padding: 9px 13px; border: 1px solid #ddd;
-      border-radius: 8px; font-size: 0.95rem;
-    }
-    .classroom-bar input:focus { outline: none; border-color: #1a73e8; }
+  /* ── Auth ── */
+  #authScreen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .auth-card {
+    background: var(--white); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px; width: 100%; max-width: 380px;
+  }
+  .auth-card h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 4px; }
+  .auth-card p  { color: var(--text-light); margin-bottom: 24px; font-size: 0.875rem; }
 
-    .tabs {
-      display: flex; gap: 4px; margin-bottom: 18px;
-      background: white; padding: 5px; border-radius: 10px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    }
-    .tab {
-      flex: 1; padding: 9px; text-align: center; cursor: pointer;
-      border-radius: 7px; font-size: 0.88rem; font-weight: 500;
-      color: #666; transition: all 0.2s;
-    }
-    .tab:hover { background: #f0f2f5; }
-    .tab.active { background: #1a73e8; color: white; }
-    .panel { display: none; }
-    .panel.active { display: block; }
+  .tab-row { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab-btn {
+    flex: 1; padding: 8px; text-align: center; cursor: pointer;
+    color: var(--text-light); font-size: 0.875rem; font-weight: 500;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.on { color: var(--blue); border-bottom-color: var(--blue); }
 
-    .card {
-      background: white; border-radius: 10px; padding: 22px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1); margin-bottom: 18px;
-    }
-    .card h2 { font-size: 1.05rem; margin-bottom: 14px; color: #1a73e8; }
+  label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 4px; color: #374151; }
+  input[type=text], input[type=email], input[type=password] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 0.875rem; color: var(--text);
+    background: var(--white); outline: none; transition: border-color .15s;
+  }
+  input:focus { border-color: var(--blue); }
+  .field { margin-bottom: 14px; }
+  .err-msg { color: var(--red); font-size: 0.8rem; margin-bottom: 10px; min-height: 16px; }
 
-    .upload-area {
-      border: 2px dashed #ccc; border-radius: 10px; padding: 36px;
-      text-align: center; cursor: pointer; transition: all 0.2s;
-    }
-    .upload-area:hover, .upload-area.dragover { border-color: #1a73e8; background: #f0f6ff; }
-    .upload-area input { display: none; }
-    .upload-area .icon { font-size: 2.2rem; }
-    .upload-area p { color: #888; margin-top: 6px; font-size: 0.88rem; }
-    .preview-img { max-width: 100%; max-height: 280px; border-radius: 8px; margin-top: 12px; display: none; }
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 16px; border: none; border-radius: var(--radius);
+    font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: opacity .15s;
+    text-decoration: none;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-blue  { background: var(--blue); color: #fff; }
+  .btn-blue:hover:not(:disabled)  { background: #1d4ed8; }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-green:hover:not(:disabled) { background: #15803d; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover:not(:disabled) { background: var(--bg); }
+  .btn-full  { width: 100%; }
+  .btn-sm    { padding: 5px 12px; font-size: 0.8125rem; }
 
-    .btn {
-      padding: 10px 22px; border: none; border-radius: 8px;
-      font-size: 0.92rem; font-weight: 500; cursor: pointer; transition: opacity 0.2s;
-    }
-    .btn:hover { opacity: 0.87; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: #1a73e8; color: white; }
-    .btn-success { background: #34a853; color: white; }
-    .btn-outline  { background: transparent; border: 1px solid #ccc; color: #555; }
-    .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+  /* ── App shell ── */
+  #appScreen { display: none; min-height: 100vh; }
 
-    .faces-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; margin-top: 14px;
-    }
-    .face-card { background: #f8f9fa; border-radius: 8px; overflow: hidden; }
-    .face-card img { width: 100%; aspect-ratio: 1; object-fit: cover; }
-    .face-card .face-label { padding: 7px; display: flex; flex-direction: column; gap: 3px; }
-    .face-card input { width: 100%; padding: 5px 7px; border: 1px solid #ddd; border-radius: 5px; font-size: 0.8rem; }
-    .face-card input:focus { outline: none; border-color: #1a73e8; }
-    .face-id { font-size: 0.72rem; color: #999; }
+  nav {
+    background: var(--white); border-bottom: 1px solid var(--border);
+    padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+    height: 52px; position: sticky; top: 0; z-index: 10;
+  }
+  .nav-title { font-weight: 600; font-size: 0.9375rem; }
+  .nav-right  { display: flex; align-items: center; gap: 10px; color: var(--text-light); font-size: 0.8125rem; }
 
-    .status-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; }
-    .badge-green  { background: #e6f4ea; color: #137333; }
-    .badge-yellow { background: #fef7e0; color: #b06000; }
-    .badge-red    { background: #fce8e6; color: #c5221f; }
+  .page { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
 
-    .result-list { margin-top: 14px; }
-    .result-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f0f0f0; }
-    .result-row img { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; }
-    .result-info { flex: 1; }
-    .result-roll { font-weight: 600; }
-    .result-conf { font-size: 0.8rem; color: #888; }
-    .result-image { max-width: 100%; border-radius: 8px; margin-top: 12px; }
+  /* classroom bar */
+  .croom-bar {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 20px;
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 14px;
+  }
+  .croom-bar span { font-size: 0.8125rem; color: var(--text-light); white-space: nowrap; }
+  .croom-bar input {
+    flex: 1; border: none; outline: none; font-size: 0.9375rem;
+    font-weight: 500; color: var(--text); background: transparent;
+  }
 
-    .toast {
-      position: fixed; bottom: 22px; right: 22px; padding: 11px 18px;
-      border-radius: 8px; font-size: 0.88rem; opacity: 0;
-      transition: opacity 0.3s; pointer-events: none; z-index: 999; color: white; background: #333;
-    }
-    .toast.show { opacity: 1; }
-    .toast.success { background: #34a853; }
-    .toast.error   { background: #ea4335; }
+  /* steps nav */
+  .steps { display: flex; gap: 2px; margin-bottom: 20px; }
+  .step {
+    flex: 1; padding: 8px 4px; text-align: center; cursor: pointer;
+    border-radius: var(--radius); font-size: 0.8125rem; color: var(--text-light);
+    font-weight: 500; border: 1px solid transparent; transition: all .15s;
+  }
+  .step:hover { background: var(--white); border-color: var(--border); }
+  .step.on { background: var(--white); border-color: var(--blue); color: var(--blue); }
+  .step .num {
+    display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--border); color: var(--text-light);
+    font-size: 0.7rem; line-height: 18px; text-align: center; margin-right: 4px;
+  }
+  .step.on .num { background: var(--blue); color: #fff; }
 
-    .spinner {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.4); border-top-color: white;
-      border-radius: 50%; animation: spin 0.7s linear infinite;
-      margin-right: 5px; vertical-align: middle;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .info-row { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
-    .info-item { font-size: 0.88rem; }
-    .info-item span { font-weight: 600; }
-  </style>
+  .panel { display: none; }
+  .panel.on { display: block; }
+
+  /* card */
+  .card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  }
+  .card-title { font-weight: 600; margin-bottom: 14px; }
+
+  /* upload / camera area */
+  .capture-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .capture-btn {
+    flex: 1; padding: 28px 12px; border: 1px dashed var(--border);
+    border-radius: var(--radius); background: var(--bg); cursor: pointer;
+    text-align: center; transition: border-color .15s, background .15s;
+  }
+  .capture-btn:hover { border-color: var(--blue); background: var(--blue-light); }
+  .capture-btn .icon { font-size: 1.5rem; display: block; margin-bottom: 4px; }
+  .capture-btn span  { font-size: 0.8125rem; color: var(--text-light); }
+  .capture-btn input { display: none; }
+
+  .preview-wrap { position: relative; margin-bottom: 12px; display: none; }
+  .preview-wrap img { width: 100%; max-height: 260px; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); }
+  .preview-wrap button {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(0,0,0,.5); color: #fff; border: none;
+    border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: .8rem;
+  }
+
+  /* camera modal */
+  .modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--white); border-radius: 12px; padding: 20px;
+    width: 100%; max-width: 520px; margin: 16px;
+  }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .modal-head h3 { font-weight: 600; }
+  .modal-head button { background: none; border: none; cursor: pointer; font-size: 1.2rem; color: var(--gray); }
+  video { width: 100%; border-radius: var(--radius); background: #000; }
+  .modal-foot { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+
+  /* faces grid */
+  .faces-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-top: 12px;
+  }
+  .face-tile { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .face-tile img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+  .face-tile-body { padding: 8px; }
+  .face-tile-id { font-size: 0.7rem; color: var(--text-light); margin-bottom: 4px; }
+  .face-tile input {
+    width: 100%; padding: 4px 6px; border: 1px solid var(--border);
+    border-radius: 4px; font-size: 0.8rem;
+  }
+  .face-tile input:focus { outline: none; border-color: var(--blue); }
+
+  /* attendance results */
+  .att-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .att-row:last-child { border-bottom: none; }
+  .att-row img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+  .att-info { flex: 1; }
+  .att-roll { font-weight: 600; }
+  .att-conf { font-size: 0.8rem; color: var(--text-light); }
+  .badge {
+    font-size: 0.75rem; font-weight: 500; padding: 2px 8px; border-radius: 20px;
+  }
+  .badge-p { background: #dcfce7; color: #15803d; }
+  .badge-a { background: #fee2e2; color: #b91c1c; }
+
+  /* status pill */
+  .pill { font-size: 0.75rem; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
+  .pill-ok  { background: #dcfce7; color: #15803d; }
+  .pill-no  { background: #fef9c3; color: #a16207; }
+
+  .result-img { width: 100%; border-radius: var(--radius); margin-top: 12px; border: 1px solid var(--border); }
+
+  /* toast */
+  #toast {
+    position: fixed; bottom: 20px; right: 20px; padding: 10px 16px;
+    border-radius: var(--radius); font-size: 0.875rem; color: #fff;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 200;
+    background: #1f2937;
+  }
+  #toast.show { opacity: 1; }
+  #toast.ok  { background: var(--green); }
+  #toast.err { background: var(--red); }
+
+  .spin {
+    display: inline-block; width: 13px; height: 13px;
+    border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+    border-radius: 50%; animation: sp .6s linear infinite;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  .info-grid { display: flex; gap: 24px; flex-wrap: wrap; }
+  .info-item { font-size: 0.875rem; }
+  .info-item b { font-weight: 600; }
+
+  .empty { color: var(--text-light); font-size: 0.875rem; padding: 16px 0; }
+</style>
 </head>
 <body>
 
-<!-- ── Auth Screen ── -->
+<!-- AUTH -->
 <div id="authScreen">
-  <div class="auth-box">
-    <div class="logo">🎓</div>
-    <h2>Face-Based Attendance</h2>
-    <div class="auth-tabs">
-      <div class="auth-tab active" onclick="showAuthTab('login')">Login</div>
-      <div class="auth-tab" onclick="showAuthTab('register')">Register</div>
+  <div class="auth-card">
+    <h1>Attendance System</h1>
+    <p>Face-based attendance tracking</p>
+    <div class="tab-row">
+      <div class="tab-btn on" onclick="authTab('login')">Sign in</div>
+      <div class="tab-btn"    onclick="authTab('register')">Register</div>
     </div>
 
-    <!-- Login Form -->
     <div id="loginForm">
-      <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="loginUsername" placeholder="Enter username" />
-      </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="loginPassword" placeholder="Enter password"
-               onkeydown="if(event.key==='Enter') doLogin()" />
-      </div>
-      <div class="auth-error" id="loginError"></div>
-      <button class="btn btn-primary" style="width:100%" id="loginBtn" onclick="doLogin()">Login</button>
+      <div class="field"><label>Username</label><input id="lu" type="text" placeholder="your username"/></div>
+      <div class="field"><label>Password</label><input id="lp" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+      <div class="err-msg" id="le"></div>
+      <button class="btn btn-blue btn-full" id="loginBtn" onclick="doLogin()">Sign in</button>
     </div>
 
-    <!-- Register Form -->
-    <div id="registerForm" style="display:none">
-      <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="regUsername" placeholder="Choose a username" />
-      </div>
-      <div class="form-group">
-        <label>Email</label>
-        <input type="email" id="regEmail" placeholder="Enter your email" />
-      </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="regPassword" placeholder="Min 6 characters" />
-      </div>
-      <div class="auth-error" id="registerError"></div>
-      <button class="btn btn-primary" style="width:100%" id="registerBtn" onclick="doRegister()">Create Account</button>
+    <div id="regForm" style="display:none">
+      <div class="field"><label>Username</label><input id="ru" type="text" placeholder="choose a username"/></div>
+      <div class="field"><label>Email</label><input id="re" type="email" placeholder="you@example.com"/></div>
+      <div class="field"><label>Password</label><input id="rp" type="password" placeholder="min 6 characters"/></div>
+      <div class="err-msg" id="ree"></div>
+      <button class="btn btn-blue btn-full" id="regBtn" onclick="doRegister()">Create account</button>
     </div>
   </div>
 </div>
 
-<!-- ── Main App ── -->
+<!-- APP -->
 <div id="appScreen">
-  <header>
-    <div class="header-left">
-      <span style="font-size:1.6rem">🎓</span>
-      <h1>Face-Based Attendance</h1>
+  <nav>
+    <span class="nav-title">Attendance System</span>
+    <div class="nav-right">
+      <span id="navUser"></span>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Sign out</button>
     </div>
-    <div class="user-info">
-      <span id="headerUsername"></span>
-      <button class="btn btn-outline btn-sm" onclick="doLogout()">Logout</button>
-    </div>
-  </header>
+  </nav>
 
-  <div class="container">
-    <div class="classroom-bar">
-      <label style="font-weight:500;white-space:nowrap">Classroom ID:</label>
-      <input type="text" id="classroomId" placeholder="e.g. CS101" value="CS101" />
-      <button class="btn btn-primary" onclick="checkStatus()">Check Status</button>
+  <div class="page">
+
+    <!-- classroom bar -->
+    <div class="croom-bar">
+      <span>Classroom</span>
+      <input id="cid" type="text" value="CS101" placeholder="Enter classroom ID"/>
+      <button class="btn btn-ghost btn-sm" onclick="checkStatus()">Check</button>
     </div>
 
+    <!-- status -->
     <div class="card" id="statusCard" style="display:none">
-      <h2>Classroom Status</h2>
-      <div class="info-row">
-        <div class="info-item">Model: <span id="statusModel">—</span></div>
-        <div class="info-item">Labeled Faces: <span id="statusFaces">—</span></div>
+      <div class="info-grid">
+        <div class="info-item">Model <br/><span id="sModel"></span></div>
+        <div class="info-item">Labeled faces <br/><b id="sFaces">—</b></div>
       </div>
     </div>
 
-    <div class="tabs">
-      <div class="tab active" onclick="switchTab('detect')">1. Detect Faces</div>
-      <div class="tab" onclick="switchTab('assign')">2. Assign Roll Nos.</div>
-      <div class="tab" onclick="switchTab('train')">3. Train Model</div>
-      <div class="tab" onclick="switchTab('attend')">4. Attendance</div>
+    <!-- steps -->
+    <div class="steps">
+      <div class="step on"  onclick="go('detect')"><span class="num">1</span>Detect</div>
+      <div class="step"     onclick="go('assign')"><span class="num">2</span>Assign</div>
+      <div class="step"     onclick="go('train')"><span class="num">3</span>Train</div>
+      <div class="step"     onclick="go('attend')"><span class="num">4</span>Attendance</div>
     </div>
 
-    <!-- Panel 1 -->
-    <div class="panel active" id="panel-detect">
+    <!-- PANEL 1: detect -->
+    <div class="panel on" id="p-detect">
       <div class="card">
-        <h2>Upload Group Photo — Detect Faces</h2>
-        <div class="upload-area" id="detectDropzone" onclick="document.getElementById('detectFile').click()">
-          <div class="icon">📷</div>
-          <p>Click or drag & drop a group photo</p>
-          <input type="file" id="detectFile" accept="image/*" onchange="previewImage(this,'detectPreview')" />
+        <div class="card-title">Detect faces in a group photo</div>
+        <div class="capture-row">
+          <label class="capture-btn" onclick="document.getElementById('df').click()">
+            <span class="icon">🖼</span>
+            <span>Choose file</span>
+            <input type="file" id="df" accept="image/*" onchange="pickFile(this,'dp','detect')"/>
+          </label>
+          <div class="capture-btn" onclick="openCam('detect')">
+            <span class="icon">📷</span>
+            <span>Open camera</span>
+          </div>
         </div>
-        <img id="detectPreview" class="preview-img" />
-        <br/>
-        <button class="btn btn-primary" id="detectBtn" onclick="detectFaces()" style="margin-top:12px">Detect Faces</button>
-      </div>
-      <div class="card" id="detectedFacesCard" style="display:none">
-        <h2>Detected Faces</h2>
-        <p id="detectedCount" style="color:#888;font-size:0.88rem;margin-bottom:8px"></p>
-        <div class="faces-grid" id="detectedFacesGrid"></div>
-      </div>
-    </div>
-
-    <!-- Panel 2 -->
-    <div class="panel" id="panel-assign">
-      <div class="card">
-        <h2>Assign Roll Numbers</h2>
-        <p style="color:#888;font-size:0.88rem;margin-bottom:14px">Detect faces in Step 1, then label them here.</p>
-        <div class="faces-grid" id="assignFacesGrid">
-          <p style="color:#aaa">No faces detected yet.</p>
+        <div class="preview-wrap" id="dp-wrap">
+          <img id="dp"/>
+          <button onclick="clearPreview('dp-wrap','df','detect')">✕</button>
         </div>
-        <br/>
-        <button class="btn btn-success" id="assignBtn" onclick="assignRollNumbers()" style="margin-top:8px">Save Roll Numbers</button>
+        <button class="btn btn-blue" id="detectBtn" onclick="detectFaces()">Detect faces</button>
+      </div>
+      <div class="card" id="dfCard" style="display:none">
+        <div class="card-title" id="dfTitle">Detected faces</div>
+        <div class="faces-grid" id="dfGrid"></div>
       </div>
     </div>
 
-    <!-- Panel 3 -->
-    <div class="panel" id="panel-train">
+    <!-- PANEL 2: assign -->
+    <div class="panel" id="p-assign">
       <div class="card">
-        <h2>Train Recognition Model</h2>
-        <p style="color:#555;margin-bottom:16px;line-height:1.6">
-          Augments labeled faces and trains the Siamese Network for this classroom.
-          Runs on CPU — may take several minutes.
+        <div class="card-title">Assign roll numbers</div>
+        <p class="empty" id="assignHint">Detect faces in step 1 first.</p>
+        <div class="faces-grid" id="agGrid"></div>
+        <br/>
+        <button class="btn btn-green" id="assignBtn" onclick="assignRolls()" style="display:none">Save roll numbers</button>
+      </div>
+    </div>
+
+    <!-- PANEL 3: train -->
+    <div class="panel" id="p-train">
+      <div class="card">
+        <div class="card-title">Train model</div>
+        <p style="color:var(--text-light);margin-bottom:16px">
+          Trains the recognition model for this classroom using labeled faces.
+          This runs on CPU and takes a few minutes.
         </p>
-        <button class="btn btn-primary" id="trainBtn" onclick="trainModel()">Start Training</button>
-        <div id="trainResult" style="margin-top:16px"></div>
+        <button class="btn btn-blue" id="trainBtn" onclick="trainModel()">Start training</button>
+        <div id="trainMsg" style="margin-top:12px"></div>
       </div>
     </div>
 
-    <!-- Panel 4 -->
-    <div class="panel" id="panel-attend">
+    <!-- PANEL 4: attendance -->
+    <div class="panel" id="p-attend">
       <div class="card">
-        <h2>Take Attendance</h2>
-        <div class="upload-area" id="attendDropzone" onclick="document.getElementById('attendFile').click()">
-          <div class="icon">📸</div>
-          <p>Click or drag & drop an attendance photo</p>
-          <input type="file" id="attendFile" accept="image/*" onchange="previewImage(this,'attendPreview')" />
+        <div class="card-title">Take attendance</div>
+        <div class="capture-row">
+          <label class="capture-btn" onclick="document.getElementById('af').click()">
+            <span class="icon">🖼</span>
+            <span>Choose file</span>
+            <input type="file" id="af" accept="image/*" onchange="pickFile(this,'ap','attend')"/>
+          </label>
+          <div class="capture-btn" onclick="openCam('attend')">
+            <span class="icon">📷</span>
+            <span>Open camera</span>
+          </div>
         </div>
-        <img id="attendPreview" class="preview-img" />
-        <br/>
-        <button class="btn btn-primary" id="attendBtn" onclick="takeAttendance()" style="margin-top:12px">Recognize Faces</button>
+        <div class="preview-wrap" id="ap-wrap">
+          <img id="ap"/>
+          <button onclick="clearPreview('ap-wrap','af','attend')">✕</button>
+        </div>
+        <button class="btn btn-blue" id="attendBtn" onclick="takeAttend()">Recognize faces</button>
       </div>
-      <div class="card" id="attendResultCard" style="display:none">
-        <h2>Attendance Results</h2>
-        <img id="attendResultImage" class="result-image" style="display:none"/>
-        <div class="result-list" id="attendResultList"></div>
+      <div class="card" id="attResCard" style="display:none">
+        <div class="card-title">Results</div>
+        <img id="attResImg" class="result-img" style="display:none"/>
+        <div id="attResList"></div>
       </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- CAMERA MODAL -->
+<div class="modal-bg" id="camModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Camera</h3>
+      <button onclick="closeCam()">✕</button>
+    </div>
+    <video id="camVideo" autoplay playsinline></video>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeCam()">Cancel</button>
+      <button class="btn btn-blue" onclick="snapPhoto()">📸 Capture</button>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div id="toast"></div>
 
 <script>
-  const API = '';
-  let authToken = localStorage.getItem('token') || null;
+const API = '';
+let token = localStorage.getItem('token');
+let detected = [];
+let camTarget = null;
+let camStream = null;
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
-
-  window.onload = () => {
-    if (authToken) verifyAndShow();
-    else showAuth();
-  };
-
-  async function verifyAndShow() {
-    try {
-      const res = await authFetch('/auth/me');
-      if (res.ok) {
-        const data = await res.json();
-        showApp(data.username);
-      } else {
-        authToken = null; localStorage.removeItem('token');
-        showAuth();
-      }
-    } catch { showAuth(); }
+// ── Boot ──────────────────────────────────────────────────────────────────────
+window.onload = async () => {
+  if (token) {
+    const r = await af('/auth/me');
+    if (r.ok) { const d = await r.json(); showApp(d.username); return; }
+    token = null; localStorage.removeItem('token');
   }
+  show('authScreen'); hide('appScreen');
+};
 
-  function showAuth() {
-    document.getElementById('authScreen').style.display = 'flex';
-    document.getElementById('appScreen').style.display = 'none';
+// ── Auth UI ───────────────────────────────────────────────────────────────────
+function authTab(t) {
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('on',['login','register'][i]===t));
+  document.getElementById('loginForm').style.display = t==='login'    ? '' : 'none';
+  document.getElementById('regForm').style.display   = t==='register' ? '' : 'none';
+}
+
+async function doLogin() {
+  const u=v('lu'), p=v('lp');
+  if(!u||!p){set('le','Fill in all fields.');return;}
+  load('loginBtn',true,'Signing in…');
+  const r = await fetch('/auth/login',{method:'POST',headers:h(),body:JSON.stringify({username:u,password:p})});
+  const d = await r.json();
+  load('loginBtn',false,'Sign in');
+  if(!r.ok){set('le',d.error);return;}
+  token=d.token; localStorage.setItem('token',token); showApp(d.username);
+}
+
+async function doRegister() {
+  const u=v('ru'),e=v('re'),p=v('rp');
+  if(!u||!e||!p){set('ree','Fill in all fields.');return;}
+  load('regBtn',true,'Creating…');
+  const r = await fetch('/auth/register',{method:'POST',headers:h(),body:JSON.stringify({username:u,email:e,password:p})});
+  const d = await r.json();
+  load('regBtn',false,'Create account');
+  if(!r.ok){set('ree',d.error);return;}
+  toast('Account created — sign in','ok');
+  authTab('login');
+  document.getElementById('lu').value=u;
+}
+
+function doLogout() {
+  token=null; localStorage.removeItem('token');
+  hide('appScreen'); show('authScreen');
+  document.getElementById('lp').value=''; set('le','');
+}
+
+function showApp(username) {
+  hide('authScreen'); show('appScreen');
+  document.getElementById('navUser').textContent = username;
+}
+
+// ── Nav / steps ───────────────────────────────────────────────────────────────
+const panels = ['detect','assign','train','attend'];
+function go(name) {
+  document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('on',panels[i]===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('p-'+name).classList.add('on');
+  if(name==='assign') syncAssign();
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+async function checkStatus() {
+  const cid=croom(); if(!cid)return;
+  const r = await af(`/classroom/${cid}/status`);
+  if(r.status===401){doLogout();return;}
+  const d = await r.json();
+  show('statusCard');
+  document.getElementById('sModel').innerHTML = d.model_trained
+    ? '<span class="pill pill-ok">Trained ✓</span>'
+    : '<span class="pill pill-no">Not trained</span>';
+  document.getElementById('sFaces').textContent = d.labeled_faces_count;
+}
+
+// ── File / camera pick ────────────────────────────────────────────────────────
+function pickFile(input, imgId, target) {
+  const file = input.files[0]; if(!file) return;
+  const wrap = document.getElementById(imgId+'-wrap');
+  document.getElementById(imgId).src = URL.createObjectURL(file);
+  wrap.style.display = '';
+  // store file on the input element itself — no extra state needed
+}
+
+function clearPreview(wrapId, inputId, target) {
+  document.getElementById(wrapId).style.display = 'none';
+  document.getElementById(inputId).value = '';
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+async function openCam(target) {
+  camTarget = target;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    document.getElementById('camVideo').srcObject = camStream;
+    document.getElementById('camModal').classList.add('open');
+  } catch(e) {
+    toast('Camera not available: '+e.message,'err');
   }
+}
 
-  function showApp(username) {
-    document.getElementById('authScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = 'block';
-    document.getElementById('headerUsername').textContent = '👤 ' + username;
-  }
+function closeCam() {
+  if(camStream) { camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  document.getElementById('camModal').classList.remove('open');
+}
 
-  // ── Auth helpers ──────────────────────────────────────────────────────────
+function snapPhoto() {
+  const video = document.getElementById('camVideo');
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video,0,0);
+  canvas.toBlob(blob => {
+    const file = new File([blob],'camera.jpg',{type:'image/jpeg'});
+    const imgId    = camTarget==='detect' ? 'dp' : 'ap';
+    const wrapId   = imgId+'-wrap';
+    const inputId  = camTarget==='detect' ? 'df' : 'af';
+    const input    = document.getElementById(inputId);
+    // inject file into the input via DataTransfer
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    document.getElementById(imgId).src = URL.createObjectURL(file);
+    document.getElementById(wrapId).style.display = '';
+    closeCam();
+  },'image/jpeg',0.92);
+}
 
-  function authFetch(url, options = {}) {
-    options.headers = options.headers || {};
-    if (authToken) options.headers['Authorization'] = 'Bearer ' + authToken;
-    return fetch(API + url, options);
-  }
+// ── Step 1: Detect ────────────────────────────────────────────────────────────
+async function detectFaces() {
+  const cid=croom(); if(!cid)return;
+  const file = document.getElementById('df').files[0];
+  if(!file){toast('Choose or capture a photo first','err');return;}
+  load('detectBtn',true,'Detecting…');
+  const form=new FormData(); form.append('file',file);
+  try {
+    const r = await af(`/classroom/${cid}/detect_faces`,{method:'POST',body:form});
+    if(r.status===401){doLogout();return;}
+    const d = await r.json();
+    if(!r.ok){toast(d.error||'Detection failed','err');return;}
+    detected = d.faces||[];
+    renderDetected(detected);
+    toast(`Found ${detected.length} face(s)`,'ok');
+  } catch(e){ toast(e.message,'err'); }
+  finally { load('detectBtn',false,'Detect faces'); }
+}
 
-  function showAuthTab(tab) {
-    document.querySelectorAll('.auth-tab').forEach((t, i) =>
-      t.classList.toggle('active', ['login','register'][i] === tab));
-    document.getElementById('loginForm').style.display    = tab === 'login'    ? 'block' : 'none';
-    document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
-    document.getElementById('loginError').textContent = '';
-    document.getElementById('registerError').textContent = '';
-  }
+function renderDetected(faces) {
+  const card = document.getElementById('dfCard');
+  const grid = document.getElementById('dfGrid');
+  card.style.display = '';
+  document.getElementById('dfTitle').textContent = `${faces.length} face${faces.length!==1?'s':''} detected`;
+  grid.innerHTML = faces.map(f=>`
+    <div class="face-tile">
+      <img src="${API}${f.face_image_url}" alt="${f.face_id}"/>
+      <div class="face-tile-body">
+        <div class="face-tile-id">${f.face_id}</div>
+      </div>
+    </div>`).join('') || '<p class="empty">No faces detected.</p>';
+}
 
-  async function doLogin() {
-    const username = document.getElementById('loginUsername').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const errEl = document.getElementById('loginError');
-    if (!username || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
-    setLoading('loginBtn', true, 'Logging in...');
-    try {
-      const res = await fetch(API + '/auth/login', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      if (!res.ok) { errEl.textContent = data.error; return; }
-      authToken = data.token;
-      localStorage.setItem('token', authToken);
-      showApp(data.username);
-    } catch(e) {
-      errEl.textContent = 'Connection error.';
-    } finally {
-      setLoading('loginBtn', false, 'Login');
-    }
-  }
+// ── Step 2: Assign ────────────────────────────────────────────────────────────
+function syncAssign() {
+  const grid = document.getElementById('agGrid');
+  const hint = document.getElementById('assignHint');
+  const btn  = document.getElementById('assignBtn');
+  if(!detected.length){ grid.innerHTML=''; hint.style.display=''; btn.style.display='none'; return; }
+  hint.style.display='none'; btn.style.display='';
+  grid.innerHTML = detected.map(f=>`
+    <div class="face-tile">
+      <img src="${API}${f.face_image_url}" alt="${f.face_id}"/>
+      <div class="face-tile-body">
+        <div class="face-tile-id">${f.face_id}</div>
+        <input type="text" id="r_${f.face_id}" placeholder="Roll no."/>
+      </div>
+    </div>`).join('');
+}
 
-  async function doRegister() {
-    const username = document.getElementById('regUsername').value.trim();
-    const email    = document.getElementById('regEmail').value.trim();
-    const password = document.getElementById('regPassword').value;
-    const errEl = document.getElementById('registerError');
-    if (!username || !email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
-    setLoading('registerBtn', true, 'Creating account...');
-    try {
-      const res = await fetch(API + '/auth/register', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ username, email, password })
-      });
-      const data = await res.json();
-      if (!res.ok) { errEl.textContent = data.error; return; }
-      showToast('Account created! Please log in.', 'success');
-      showAuthTab('login');
-      document.getElementById('loginUsername').value = username;
-    } catch(e) {
-      errEl.textContent = 'Connection error.';
-    } finally {
-      setLoading('registerBtn', false, 'Create Account');
-    }
-  }
-
-  function doLogout() {
-    authToken = null; localStorage.removeItem('token');
-    showAuth();
-    document.getElementById('loginPassword').value = '';
-    document.getElementById('loginError').textContent = '';
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  function getClassroomId() {
-    const id = document.getElementById('classroomId').value.trim();
-    if (!id) { showToast('Please enter a Classroom ID', 'error'); return null; }
-    return id;
-  }
-
-  function showToast(msg, type = '') {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.className = 'toast show ' + type;
-    setTimeout(() => t.className = 'toast', 3200);
-  }
-
-  function setLoading(btnId, loading, label) {
-    const btn = document.getElementById(btnId);
-    btn.disabled = loading;
-    btn.innerHTML = loading ? `<span class="spinner"></span>${label}` : label;
-  }
-
-  function previewImage(input, previewId) {
-    const preview = document.getElementById(previewId);
-    const file = input.files[0]; if (!file) return;
-    preview.src = URL.createObjectURL(file);
-    preview.style.display = 'block';
-  }
-
-  function switchTab(name) {
-    const names = ['detect','assign','train','attend'];
-    document.querySelectorAll('.tab').forEach((t, i) =>
-      t.classList.toggle('active', names[i] === name));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.getElementById('panel-' + name).classList.add('active');
-    if (name === 'assign') syncAssignPanel();
-  }
-
-  // ── Status ────────────────────────────────────────────────────────────────
-
-  async function checkStatus() {
-    const cid = getClassroomId(); if (!cid) return;
-    try {
-      const res = await authFetch(`/classroom/${cid}/status`);
-      if (res.status === 401) { doLogout(); return; }
-      const data = await res.json();
-      document.getElementById('statusCard').style.display = 'block';
-      document.getElementById('statusModel').innerHTML = data.model_trained
-        ? '<span class="status-badge badge-green">Trained ✓</span>'
-        : '<span class="status-badge badge-yellow">Not Trained</span>';
-      document.getElementById('statusFaces').textContent = data.labeled_faces_count;
-    } catch { showToast('Could not reach API', 'error'); }
-  }
-
-  // ── Step 1: Detect ────────────────────────────────────────────────────────
-
-  let detectedFaces = [];
-
-  async function detectFaces() {
-    const cid = getClassroomId(); if (!cid) return;
-    const file = document.getElementById('detectFile').files[0];
-    if (!file) { showToast('Please select a photo first', 'error'); return; }
-    setLoading('detectBtn', true, 'Detecting...');
-    const form = new FormData(); form.append('file', file);
-    try {
-      const res = await authFetch(`/classroom/${cid}/detect_faces`, { method: 'POST', body: form });
-      if (res.status === 401) { doLogout(); return; }
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || 'Detection failed', 'error'); return; }
-      detectedFaces = data.faces || [];
-      renderDetectedFaces(detectedFaces);
-      showToast(`Detected ${detectedFaces.length} face(s)`, 'success');
-    } catch(e) { showToast('Request failed: ' + e.message, 'error');
-    } finally { setLoading('detectBtn', false, 'Detect Faces'); }
-  }
-
-  function renderDetectedFaces(faces) {
-    const card = document.getElementById('detectedFacesCard');
-    const grid = document.getElementById('detectedFacesGrid');
-    card.style.display = 'block';
-    document.getElementById('detectedCount').textContent = `${faces.length} face(s) detected`;
-    grid.innerHTML = faces.length ? faces.map(f => `
-      <div class="face-card">
-        <img src="${API}${f.face_image_url}" alt="${f.face_id}" />
-        <div class="face-label"><div class="face-id">${f.face_id}</div></div>
-      </div>`).join('') : '<p style="color:#aaa">No faces detected.</p>';
-  }
-
-  // ── Step 2: Assign ────────────────────────────────────────────────────────
-
-  function syncAssignPanel() {
-    const grid = document.getElementById('assignFacesGrid');
-    if (!detectedFaces.length) {
-      grid.innerHTML = '<p style="color:#aaa">No faces detected yet. Go to Step 1 first.</p>'; return;
-    }
-    grid.innerHTML = detectedFaces.map(f => `
-      <div class="face-card">
-        <img src="${API}${f.face_image_url}" alt="${f.face_id}" />
-        <div class="face-label">
-          <div class="face-id">${f.face_id}</div>
-          <input type="text" id="roll_${f.face_id}" placeholder="Roll number" />
-        </div>
-      </div>`).join('');
-  }
-
-  async function assignRollNumbers() {
-    const cid = getClassroomId(); if (!cid) return;
-    if (!detectedFaces.length) { showToast('No faces to assign', 'error'); return; }
-    const assignments = detectedFaces
-      .map(f => ({ face_id: f.face_id, roll_number: document.getElementById('roll_' + f.face_id)?.value.trim() }))
-      .filter(a => a.roll_number);
-    if (!assignments.length) { showToast('Please enter at least one roll number', 'error'); return; }
-    setLoading('assignBtn', true, 'Saving...');
-    try {
-      const res = await authFetch(`/classroom/${cid}/assign_roll_numbers`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ assignments })
-      });
-      if (res.status === 401) { doLogout(); return; }
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || 'Assignment failed', 'error'); return; }
-      showToast(`Assigned ${data.successful.length} roll number(s)`, 'success');
-    } catch(e) { showToast('Request failed: ' + e.message, 'error');
-    } finally { setLoading('assignBtn', false, 'Save Roll Numbers'); }
-  }
-
-  // ── Step 3: Train ─────────────────────────────────────────────────────────
-
-  async function trainModel() {
-    const cid = getClassroomId(); if (!cid) return;
-    setLoading('trainBtn', true, 'Training... (may take several minutes)');
-    document.getElementById('trainResult').innerHTML = '';
-    try {
-      const res = await authFetch(`/classroom/${cid}/train_model`, { method: 'POST' });
-      if (res.status === 401) { doLogout(); return; }
-      const data = await res.json();
-      const ok = res.ok && data.status === 'success';
-      document.getElementById('trainResult').innerHTML = `
-        <span class="status-badge ${ok ? 'badge-green' : 'badge-red'}">
-          ${ok ? '✓ ' + data.message : '✗ ' + (data.error || data.message)}
-        </span>`;
-      showToast(ok ? 'Training complete!' : 'Training failed', ok ? 'success' : 'error');
-    } catch(e) { showToast('Request failed: ' + e.message, 'error');
-    } finally { setLoading('trainBtn', false, 'Start Training'); }
-  }
-
-  // ── Step 4: Attendance ────────────────────────────────────────────────────
-
-  async function takeAttendance() {
-    const cid = getClassroomId(); if (!cid) return;
-    const file = document.getElementById('attendFile').files[0];
-    if (!file) { showToast('Please select a photo first', 'error'); return; }
-    setLoading('attendBtn', true, 'Recognizing...');
-    const form = new FormData(); form.append('file', file);
-    try {
-      const res = await authFetch(`/classroom/${cid}/recognize_faces`, { method: 'POST', body: form });
-      if (res.status === 401) { doLogout(); return; }
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || 'Recognition failed', 'error'); return; }
-      renderAttendanceResults(data);
-      showToast(`Recognized ${data.recognized_faces?.length || 0} face(s)`, 'success');
-    } catch(e) { showToast('Request failed: ' + e.message, 'error');
-    } finally { setLoading('attendBtn', false, 'Recognize Faces'); }
-  }
-
-  function renderAttendanceResults(data) {
-    document.getElementById('attendResultCard').style.display = 'block';
-    const img = document.getElementById('attendResultImage');
-    if (data.resultImage) { img.src = API + data.resultImage; img.style.display = 'block'; }
-    const faces = data.recognized_faces || [];
-    document.getElementById('attendResultList').innerHTML = faces.length
-      ? faces.map(f => {
-          const conf = Math.round(parseFloat(f.confidence) * 100);
-          const known = f.roll_number !== 'Unknown';
-          return `<div class="result-row">
-            <img src="${API}${f.face_image_url}" onerror="this.style.display='none'" />
-            <div class="result-info">
-              <div class="result-roll">${f.roll_number}</div>
-              <div class="result-conf">Confidence: ${conf}%</div>
-            </div>
-            <span class="status-badge ${known ? 'badge-green' : 'badge-red'}">${known ? 'Present' : 'Unknown'}</span>
-          </div>`;
-        }).join('')
-      : '<p style="color:#aaa">No faces recognized.</p>';
-  }
-
-  // ── Drag & Drop ───────────────────────────────────────────────────────────
-
-  ['detectDropzone','attendDropzone'].forEach(id => {
-    const zone = document.getElementById(id);
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-    zone.addEventListener('drop', e => {
-      e.preventDefault(); zone.classList.remove('dragover');
-      const inputId   = id === 'detectDropzone' ? 'detectFile'   : 'attendFile';
-      const previewId = id === 'detectDropzone' ? 'detectPreview' : 'attendPreview';
-      document.getElementById(inputId).files = e.dataTransfer.files;
-      previewImage(document.getElementById(inputId), previewId);
+async function assignRolls() {
+  const cid=croom(); if(!cid)return;
+  const assignments = detected.map(f=>({
+    face_id: f.face_id,
+    roll_number: (document.getElementById('r_'+f.face_id)?.value||'').trim()
+  })).filter(a=>a.roll_number);
+  if(!assignments.length){toast('Enter at least one roll number','err');return;}
+  load('assignBtn',true,'Saving…');
+  try {
+    const r = await af(`/classroom/${cid}/assign_roll_numbers`,{
+      method:'POST', headers:h(), body:JSON.stringify({assignments})
     });
-  });
+    if(r.status===401){doLogout();return;}
+    const d = await r.json();
+    if(!r.ok){toast(d.error||'Failed','err');return;}
+    toast(`Saved ${d.successful.length} roll number(s)`,'ok');
+  } catch(e){toast(e.message,'err');}
+  finally{load('assignBtn',false,'Save roll numbers');}
+}
+
+// ── Step 3: Train ─────────────────────────────────────────────────────────────
+async function trainModel() {
+  const cid=croom(); if(!cid)return;
+  load('trainBtn',true,'Training… (may take a few minutes)');
+  set('trainMsg','');
+  try {
+    const r = await af(`/classroom/${cid}/train_model`,{method:'POST'});
+    if(r.status===401){doLogout();return;}
+    const d = await r.json();
+    const ok = r.ok && d.status==='success';
+    document.getElementById('trainMsg').innerHTML =
+      `<span class="pill ${ok?'pill-ok':'badge-a'}">${ok?'✓ '+d.message:'✗ '+(d.error||d.message)}</span>`;
+    toast(ok?'Training complete!':'Training failed', ok?'ok':'err');
+  } catch(e){toast(e.message,'err');}
+  finally{load('trainBtn',false,'Start training');}
+}
+
+// ── Step 4: Attendance ────────────────────────────────────────────────────────
+async function takeAttend() {
+  const cid=croom(); if(!cid)return;
+  const file = document.getElementById('af').files[0];
+  if(!file){toast('Choose or capture a photo first','err');return;}
+  load('attendBtn',true,'Recognizing…');
+  const form=new FormData(); form.append('file',file);
+  try {
+    const r = await af(`/classroom/${cid}/recognize_faces`,{method:'POST',body:form});
+    if(r.status===401){doLogout();return;}
+    const d = await r.json();
+    if(!r.ok){toast(d.error||'Failed','err');return;}
+    renderAttend(d);
+    toast(`Recognized ${d.recognized_faces?.length||0} face(s)`,'ok');
+  } catch(e){toast(e.message,'err');}
+  finally{load('attendBtn',false,'Recognize faces');}
+}
+
+function renderAttend(data) {
+  show('attResCard');
+  const img = document.getElementById('attResImg');
+  if(data.resultImage){img.src=API+data.resultImage; img.style.display='';}
+  const faces = data.recognized_faces||[];
+  document.getElementById('attResList').innerHTML = faces.length
+    ? faces.map(f=>{
+        const pct = Math.round(parseFloat(f.confidence)*100);
+        const known = f.roll_number!=='Unknown';
+        return `<div class="att-row">
+          <img src="${API}${f.face_image_url}" onerror="this.style.display='none'"/>
+          <div class="att-info">
+            <div class="att-roll">${f.roll_number}</div>
+            <div class="att-conf">Confidence: ${pct}%</div>
+          </div>
+          <span class="badge ${known?'badge-p':'badge-a'}">${known?'Present':'Unknown'}</span>
+        </div>`;
+      }).join('')
+    : '<p class="empty">No faces recognized.</p>';
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function af(url,opts={}){
+  opts.headers = {...(opts.headers||{})};
+  if(token) opts.headers['Authorization']='Bearer '+token;
+  return fetch(API+url,opts);
+}
+function h(){ return {'Content-Type':'application/json'}; }
+function v(id){ return document.getElementById(id).value.trim(); }
+function set(id,val){ document.getElementById(id).textContent=val; }
+function show(id){ document.getElementById(id).style.display=''; }
+function hide(id){ document.getElementById(id).style.display='none'; }
+function croom(){
+  const c=document.getElementById('cid').value.trim();
+  if(!c){toast('Enter a classroom ID','err');return null;}
+  return c;
+}
+function load(id,on,label){
+  const b=document.getElementById(id); b.disabled=on;
+  b.innerHTML = on ? `<span class="spin"></span> ${label}` : label;
+}
+function toast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show '+(type==='ok'?'ok':type==='err'?'err':'');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className='',3000);
+}
 </script>
 </body>
 </html>
